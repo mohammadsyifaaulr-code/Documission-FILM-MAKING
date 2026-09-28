@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOCCU MISSION - Platform Dokumenter Siswa</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Cinzel:wght@600;800&display=swap" rel="stylesheet">
+    <!-- HTML2PDF Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'doccu-mission-app';
+        let firebaseConfig = {};
+        try {
+            firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+                apiKey: "demo-key",
+                authDomain: "demo-project.firebaseapp.com",
+                projectId: "demo-project",
+                storageBucket: "demo-project.appspot.com",
+                messagingSenderId: "123456789",
+                appId: "1:123456789:web:123456789"
+            };
+        } catch(e) {
+            console.error("Firebase config parse error", e);
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Global bridge for Vue Instance
+        window.doccuDb = db;
+        window.doccuAuth = auth;
+        window.doccuAppId = appId;
+        window.doccuFS = {
+            doc, setDoc, deleteDoc, onSnapshot, collection, signInAnonymously, signInWithCustomToken
+        };
+        
+        window.dispatchEvent(new CustomEvent('firebase-ready'));
+    </script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#fffbe1',
+                            100: '#fff3b8',
+                            400: '#facc15',
+                            500: '#eab308',
+                            600: '#ca8a04',
+                            900: '#422006',
+                        },
+                        cinema: {
+                            950: '#06090e',
+                            900: '#0b0f17',
+                            800: '#111827',
+                            700: '#1f293d',
+                            600: '#374151'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        heading: ['Cinzel', 'serif']
+                    },
+                    backgroundImage: {
+                        'cinema-gradient': 'radial-gradient(ellipse at top, rgba(234, 179, 8, 0.08) 0%, rgba(11, 15, 23, 1) 70%)',
+                        'film-strip': 'repeating-linear-gradient(90deg, #111827 0, #111827 20px, #1f293d 20px, #1f293d 22px)'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar and print styles */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #06090e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #eab308;
+        }
+        .glow-amber {
+            box-shadow: 0 0 25px -5px rgba(234, 179, 8, 0.25);
+        }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white !important; color: black !important; }
+        }
+    </style>
+</head>
+<body class="bg-cinema-950 text-slate-100 font-sans min-h-screen selection:bg-brand-500 selection:text-cinema-950 bg-cinema-gradient relative">
+
+    <div id="app" class="flex flex-col min-h-screen">
+
+        <!-- HEADER / NAVIGATION BAR -->
+        <header class="bg-cinema-900/90 backdrop-blur-md border-b border-cinema-700/80 sticky top-0 z-40 no-print shadow-xl">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+                <div class="flex items-center space-x-3 cursor-pointer group" @click="goHome">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-brand-500 to-yellow-300 flex items-center justify-center text-cinema-950 shadow-lg shadow-brand-500/20 font-bold text-xl group-hover:scale-105 transition duration-300">
+                        <i class="fa-solid fa-clapperboard"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-heading text-xl font-extrabold tracking-wider text-amber-400 flex items-center gap-1.5">
+                            DOCCU<span class="text-white">MISSION</span>
+                            <span class="text-[10px] font-sans px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 border border-brand-500/30 font-semibold tracking-normal uppercase">Docu-Lab</span>
+                        </h1>
+                        <p class="text-[11px] text-slate-400 -mt-1 font-medium">Documentary Filmmaking Platform</p>
+                    </div>
+                </div>
+
+                <!-- User status & Logout -->
+                <div v-if="currentUser" class="flex items-center space-x-4">
+                    <div class="text-right hidden sm:block">
+                        <p class="text-sm font-bold text-slate-100 flex items-center justify-end gap-1.5">
+                            <i v-if="currentUser.role === 'student'" class="fa-solid fa-film text-amber-400 text-xs"></i>
+                            <i v-else class="fa-solid fa-user-tie text-brand-400 text-xs"></i>
+                            <span>{{ currentUser.name }}</span>
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold" title="Data tersinkronkan realtime antar-device">
+                                <i class="fa-solid fa-cloud mr-1"></i>Cloud Sync
+                            </span>
+                        </p>
+                        <div class="flex items-center justify-end space-x-2 mt-0.5">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider" 
+                                  :class="currentUser.role === 'teacher' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'">
+                                {{ currentUser.role === 'teacher' ? 'Guru Pembimbing' : 'Kelompok Siswa' }}
+                            </span>
+                            <span v-if="currentUser.role === 'student'" class="text-[10px] text-slate-400 font-medium bg-cinema-800 px-2 py-0.5 rounded border border-cinema-700">
+                                {{ currentUser.class }}
+                            </span>
+                        </div>
+                    </div>
+                    <button @click="logout" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-cinema-800 hover:bg-red-600/90 text-slate-300 hover:text-white border border-cinema-700 hover:border-red-500/50 transition duration-200 flex items-center space-x-2">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                        <span class="hidden sm:inline">Keluar</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
+
+            <!-- NOTIFICATION TOAST -->
+            <div v-if="toast.show" class="fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm font-medium transition-all duration-300 border"
+                 :class="toast.type === 'success' ? 'bg-emerald-950 text-emerald-200 border-emerald-700' : 'bg-red-950 text-red-200 border-red-700'">
+                <i :class="toast.type === 'success' ? 'fa-solid fa-circle-check text-emerald-400' : 'fa-solid fa-triangle-exclamation text-red-400'"></i>
+                <span>{{ toast.message }}</span>
+            </div>
+
+            <!-- LOGIN SELECTION SCREEN -->
+            <section v-if="!currentUser" class="py-6 max-w-4xl mx-auto space-y-8">
+                <div class="text-center mb-8 relative">
+                    <div class="inline-flex items-center justify-center p-3.5 bg-brand-500/10 rounded-2xl border border-brand-500/30 mb-4 glow-amber">
+                        <i class="fa-solid fa-film text-3xl text-brand-400"></i>
+                    </div>
+                    <h2 class="text-3xl font-extrabold text-white tracking-tight sm:text-4xl font-heading">
+                        DOCCU <span class="text-brand-400">MISSION</span>
+                    </h2>
+                    <p class="mt-2 text-slate-400 max-w-xl mx-auto text-xs sm:text-sm leading-relaxed">
+                        Platform dokumenter interaktif untuk merancang, mendokumentasikan, dan memproduksi film dokumenter sekolah secara terstruktur dalam 5 Misi Produksi.
+                    </p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <!-- Student Login Box -->
+                    <div class="bg-cinema-900/80 backdrop-blur border border-cinema-700/80 hover:border-blue-500/50 rounded-2xl p-6 shadow-2xl flex flex-col justify-between transition-all duration-300">
+                        <div>
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xl">
+                                    <i class="fa-solid fa-users"></i>
+                                </div>
+                                <span class="text-[10px] uppercase font-bold tracking-widest text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">Akses Tim Siswa</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-white mb-1">Masuk Kelompok Siswa</h3>
+                            <p class="text-slate-400 text-xs mb-6">Isi identitas kelompok untuk mulai pengerjaan Misi Dokumenter.</p>
+                            
+                            <form @submit.prevent="loginStudent" class="space-y-4">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-layer-group text-blue-400 text-xs"></i>
+                                        <span>1. Nama Kelompok</span>
+                                    </label>
+                                    <input type="text" v-model="studentLoginForm.groupName" required placeholder="Contoh: Kelompok 1 - Cinema DKV" 
+                                           class="w-full bg-cinema-950 border border-cinema-700 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-users-gear text-blue-400 text-xs"></i>
+                                        <span>2. Nama Anggota Kelompok</span>
+                                    </label>
+                                    <textarea v-model="studentLoginForm.members" required rows="2" placeholder="Masukkan nama seluruh anggota (Contoh: Budi, Andi, Siti, Rian)" 
+                                           class="w-full bg-cinema-950 border border-cinema-700 rounded-xl p-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition resize-none"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-graduation-cap text-blue-400 text-xs"></i>
+                                        <span>3. Kelas</span>
+                                    </label>
+                                    <input type="text" v-model="studentLoginForm.class" required placeholder="Contoh: X DKV 2" 
+                                           class="w-full bg-cinema-950 border border-cinema-700 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition">
+                                </div>
+                                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg transition flex items-center justify-center space-x-2 text-xs uppercase tracking-wider">
+                                    <span>Mulai Misi Dokumenter</span>
+                                    <i class="fa-solid fa-arrow-right text-xs"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Teacher Login Box -->
+                    <div class="bg-cinema-900/80 backdrop-blur border border-cinema-700/80 hover:border-brand-500/50 rounded-2xl p-6 shadow-2xl flex flex-col justify-between transition-all duration-300">
+                        <div>
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="w-12 h-12 rounded-xl bg-brand-500/10 border border-brand-500/30 flex items-center justify-center text-brand-400 text-xl">
+                                    <i class="fa-solid fa-user-shield"></i>
+                                </div>
+                                <span class="text-[10px] uppercase font-bold tracking-widest text-brand-400 bg-brand-500/10 px-2.5 py-1 rounded-full border border-brand-500/20">Akses Guru</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-white mb-1">Masuk Portal Evaluator</h3>
+                            <p class="text-slate-400 text-xs mb-6">Akses khusus Guru Pembimbing untuk evaluasi & arahan revisi karya.</p>
+                            
+                            <form @submit.prevent="loginTeacher" class="space-y-4">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-user text-brand-400 text-xs"></i>
+                                        <span>Username Guru</span>
+                                    </label>
+                                    <input type="text" v-model="teacherLoginForm.username" required placeholder="Masukkan Username Guru" 
+                                           class="w-full bg-cinema-950 border border-cinema-700 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-400 transition">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-key text-brand-400 text-xs"></i>
+                                        <span>Password</span>
+                                    </label>
+                                    <input type="password" v-model="teacherLoginForm.password" required placeholder="••••••••" 
+                                           class="w-full bg-cinema-950 border border-cinema-700 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-400 transition">
+                                </div>
+                                <div class="p-3 bg-cinema-950/60 rounded-xl border border-cinema-800 text-[11px] text-slate-400 leading-relaxed">
+                                    <i class="fa-solid fa-circle-info text-brand-400 mr-1"></i>
+                                    Akses khusus Guru Pembimbing: <strong>Bapak SYIFA</strong>.
+                                </div>
+                                <button type="submit" class="w-full py-3.5 bg-gradient-to-r from-brand-500 via-amber-500 to-amber-600 hover:from-brand-400 hover:to-amber-500 text-cinema-950 font-extrabold rounded-xl shadow-lg transition flex items-center justify-center space-x-2 text-xs uppercase tracking-wider">
+                                    <span>Masuk Dashboard Guru</span>
+                                    <i class="fa-solid fa-shield-halved text-xs"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- STUDENT DASHBOARD -->
+            <section v-if="currentUser && currentUser.role === 'student'" class="space-y-6">
+                
+                <!-- Group Info Header Banner -->
+                <div class="bg-cinema-900 border border-cinema-700/80 rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div class="space-y-2 relative z-10">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="px-2.5 py-1 bg-brand-500/20 text-brand-400 border border-brand-500/30 rounded-lg text-xs font-bold uppercase tracking-wider">
+                                <i class="fa-solid fa-layer-group mr-1"></i>{{ activeStudentData.class }}
+                            </span>
+                            <span class="px-2.5 py-1 bg-cinema-800 text-slate-300 border border-cinema-700 rounded-lg text-xs font-semibold">
+                                <i class="fa-solid fa-users mr-1 text-slate-400"></i>{{ activeStudentData.groupName }}
+                            </span>
+                        </div>
+                        <h2 class="text-2xl font-black text-white tracking-tight">{{ activeStudentData.groupName }}</h2>
+                        <div class="text-xs text-slate-300 flex items-start space-x-2 bg-cinema-950/80 p-3 rounded-xl border border-cinema-800 max-w-2xl">
+                            <i class="fa-solid fa-id-card text-brand-400 mt-0.5"></i>
+                            <div>
+                                <span class="font-bold text-slate-200 uppercase tracking-wider text-[10px]">Anggota Kelompok:</span>
+                                <p class="text-slate-300 mt-0.5">{{ activeStudentData.members }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Overall Progress Gauge -->
+                    <div class="flex items-center space-x-4 bg-cinema-950/90 p-4 rounded-2xl border border-cinema-800 relative z-10 shrink-0">
+                        <div class="text-right">
+                            <p class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Progress Tim</p>
+                            <p class="text-xl font-extrabold text-brand-400">{{ getCompletedCount(activeStudentData) }} / 5 Misi</p>
+                            <p class="text-[10px] text-slate-500">Terselesaikan</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PDF DOWNLOAD BANNER (UNLOCKED ONLY WHEN REACHING MISSION 03) -->
+                <div v-if="canDownloadPDF" class="bg-gradient-to-r from-emerald-950/80 via-cinema-900 to-cinema-900 border border-emerald-600/40 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xl shrink-0">
+                            <i class="fa-solid fa-file-pdf"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <h4 class="font-bold text-emerald-300 text-sm">Unduh Portfolio Dokumenter (PDF)</h4>
+                                <span class="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30 uppercase">Akses Terbuka (Misi 01 - 03)</span>
+                            </div>
+                            <p class="text-xs text-slate-400">Export laporan isian Misi 01 sampai 03 beserta Judul, Tema, & Catatan Evaluasi Bapak SYIFA menjadi berkas PDF.</p>
+                        </div>
+                    </div>
+                    <button @click="downloadPDF" class="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow-lg shrink-0">
+                        <i class="fa-solid fa-download"></i>
+                        <span>Download PDF Portfolio</span>
+                    </button>
+                </div>
+
+                <!-- Info Notice when PDF is locked before Misi 03 -->
+                <div v-else class="bg-cinema-900/60 border border-cinema-700/60 rounded-2xl p-4 flex items-center space-x-3 text-xs text-slate-400">
+                    <i class="fa-solid fa-lock text-brand-400 text-base shrink-0"></i>
+                    <p>Fitur <strong>Download PDF Portfolio</strong> akan terbuka secara otomatis setelah Misi 01 & Misi 02 kelompok Anda disetujui (di-ACC) oleh Bapak SYIFA hingga masuk ke <strong>MISI 03</strong>.</p>
+                </div>
+
+                <!-- MISSION NAVIGATION TABS -->
+                <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3">
+                    <button v-for="m in missions" :key="m.id" 
+                            @click="activeMissionTab = m.id"
+                            class="p-3.5 rounded-2xl border text-left transition-all duration-200 relative flex flex-col justify-between"
+                            :class="activeMissionTab === m.id ? 'bg-brand-500/10 border-brand-500 text-white ring-1 ring-brand-500/50 shadow-lg' : 'bg-cinema-900 border-cinema-700/80 text-slate-400 hover:border-cinema-600'">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md"
+                                  :class="getMissionStatusClass(activeStudentData.missions[m.key].status)">
+                                {{ getMissionStatusLabel(activeStudentData.missions[m.key].status) }}
+                            </span>
+                            <i :class="m.icon" class="text-xs"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-black text-brand-400 uppercase tracking-widest">MISI 0{{ m.id }}</p>
+                            <p class="text-xs font-bold truncate">{{ m.title }}</p>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- ACTIVE MISSION CONTENT & FORM -->
+                <div class="bg-cinema-800 border border-cinema-700 rounded-2xl p-6 shadow-xl space-y-6">
+                    
+                    <!-- Mission Info Header -->
+                    <div class="border-b border-cinema-700 pb-5">
+                        <div class="flex items-center space-x-3 mb-2">
+                            <span class="px-3 py-1 bg-brand-500/20 text-brand-400 border border-brand-500/30 rounded-lg text-xs font-bold uppercase tracking-widest">
+                                MISSION 0{{ currentMission.id }}
+                            </span>
+                            <span class="text-slate-400 text-sm font-semibold">— {{ currentMission.title }}</span>
+                        </div>
+                        <h3 class="text-2xl font-black text-white mb-3">{{ currentMission.fullTitle }}</h3>
+                        
+                        <!-- Guidelines Box -->
+                        <div class="bg-cinema-900/90 border border-cinema-700 rounded-xl p-4">
+                            <p class="text-xs font-bold text-brand-400 uppercase tracking-wider mb-2 flex items-center space-x-2">
+                                <i class="fa-solid fa-list-check"></i>
+                                <span>Tugas Kelompok yang Harus Selesai:</span>
+                            </p>
+                            <ul class="grid sm:grid-cols-2 gap-2 text-xs text-slate-300">
+                                <li v-for="(task, idx) in currentMission.tasks" :key="idx" class="flex items-start space-x-2">
+                                    <i class="fa-solid fa-check text-brand-400 mt-0.5 text-[10px]"></i>
+                                    <span>{{ task }}</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Teacher Review Comment Box (If feedback exists) -->
+                    <div v-if="activeStudentData.missions[currentMission.key].feedback" 
+                         class="p-4 rounded-xl border"
+                         :class="activeStudentData.missions[currentMission.key].status === 'revision' ? 'bg-red-950/40 border-red-700/60' : 'bg-emerald-950/40 border-emerald-700/60'">
+                        <div class="flex items-center space-x-2 font-bold text-xs uppercase mb-1"
+                             :class="activeStudentData.missions[currentMission.key].status === 'revision' ? 'text-red-400' : 'text-emerald-400'">
+                            <i class="fa-solid fa-comment-dots"></i>
+                            <span>Catatan & Evaluasi Guru (Bapak SYIFA):</span>
+                        </div>
+                        <p class="text-sm text-slate-200 font-medium">"{{ activeStudentData.missions[currentMission.key].feedback }}"</p>
+                        <div v-if="activeStudentData.missions[currentMission.key].grade" class="mt-2 text-xs font-bold text-brand-400">
+                            Nilai Misi: {{ activeStudentData.missions[currentMission.key].grade }} / 100
+                        </div>
+                    </div>
+
+                    <!-- Locked Mission Alert Notice -->
+                    <div v-if="!canEditAndSubmitMission(currentMission.id)" class="p-4 bg-amber-950/40 border border-amber-600/50 rounded-xl flex items-start space-x-3 text-amber-200 text-xs">
+                        <i class="fa-solid fa-lock text-amber-400 text-base mt-0.5"></i>
+                        <div>
+                            <p class="font-bold text-amber-300 uppercase tracking-wider mb-1">Misi Terkunci Untuk Pengisian</p>
+                            <p>{{ getLockReason(currentMission.id) }}</p>
+                            <p class="mt-1 text-slate-400">Anda tetap dapat membaca pertanyaan dan panduan tugas di bawah ini untuk persiapan.</p>
+                        </div>
+                    </div>
+
+                    <!-- DYNAMIC MISSION INPUT FIELDS -->
+                    <form @submit.prevent="saveMissionData" class="space-y-6">
+
+                        <!-- MISSION 01 FIELDS -->
+                        <div v-if="currentMission.id === 1" class="space-y-4">
+                            <div class="grid md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-300 uppercase mb-2 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-heading text-brand-400"></i>
+                                        <span>1. Judul Film Dokumenter</span>
+                                    </label>
+                                    <input type="text" v-model="activeStudentData.missions.m1.docTitle" :disabled="!canEditAndSubmitMission(1)" required placeholder="Contoh: Menjaga Asa di Ujung Senja"
+                                           class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-300 uppercase mb-2 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-tags text-brand-400"></i>
+                                        <span>2. Tema Dokumenter</span>
+                                    </label>
+                                    <input type="text" v-model="activeStudentData.missions.m1.theme" :disabled="!canEditAndSubmitMission(1)" required placeholder="Contoh: Sosial / Budaya / Lingkungan / Profil Tokoh"
+                                           class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">3. Fenomena Menarik (Bebas: Lingkungan, Sosial, Budaya, Komunitas, dll.)</label>
+                                <textarea v-model="activeStudentData.missions.m1.phenomenon" :disabled="!canEditAndSubmitMission(1)" rows="3" required placeholder="Jelaskan fenomena atau isu menarik yang ingin didokumentasikan (di sekolah, masyarakat, atau lingkungan sekitar)..."
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">4. Calon Narasumber</label>
+                                <input type="text" v-model="activeStudentData.missions.m1.interviewee" :disabled="!canEditAndSubmitMission(1)" required placeholder="Siapa narasumber kunci yang akan diwawancarai? (Contoh: Mbah Joyo - Pengrajin Batik Tradisional)"
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">5. Alasan Menarik Dijadikan Dokumenter</label>
+                                <textarea v-model="activeStudentData.missions.m1.reason" :disabled="!canEditAndSubmitMission(1)" rows="3" required placeholder="Mengapa topik ini bernilai cerita tinggi? Nilai edukasi/sosial/emosi apa yang diangkat?"
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">6. Satu Kalimat Ide Utama Dokumenter (Logline)</label>
+                                <input type="text" v-model="activeStudentData.missions.m1.mainIdea" :disabled="!canEditAndSubmitMission(1)" required placeholder="Contoh: Perjuangan Mbah Joyo merawat tradisi batik tulis di tengah gempuran mesin cetak modern."
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <!-- MISSION 02 FIELDS -->
+                        <div v-if="currentMission.id === 2" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">1. Narasumber Terpilih</label>
+                                <input type="text" v-model="activeStudentData.missions.m2.interviewee" :disabled="!canEditAndSubmitMission(2)" required placeholder="Nama & Peran Narasumber Utama"
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">2. Daftar Pertanyaan Wawancara (Minimal 5 Pertanyaan Terbuka)</label>
+                                <p class="text-xs text-slate-400 mb-2">*Pastikan pertanyaan membutuhkan jawaban penjelasan, bukan sekadar 'Ya' atau 'Tidak'.</p>
+                                <div v-for="(q, index) in activeStudentData.missions.m2.questions" :key="index" class="flex items-center space-x-2 mb-2">
+                                    <span class="text-xs font-bold text-brand-400 w-6">{{ index + 1 }}.</span>
+                                    <input type="text" v-model="activeStudentData.missions.m2.questions[index]" :disabled="!canEditAndSubmitMission(2)" required :placeholder="'Pertanyaan Wawancara Ke-' + (index + 1)"
+                                           class="flex-grow bg-cinema-900 border border-cinema-600 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <button v-if="activeStudentData.missions.m2.questions.length > 5 && canEditAndSubmitMission(2)" type="button" @click="removeQuestion(index)" class="text-red-400 hover:text-red-300 p-2">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                                <button v-if="canEditAndSubmitMission(2)" type="button" @click="addQuestion" class="mt-2 text-xs font-semibold text-brand-400 hover:underline flex items-center space-x-1">
+                                    <i class="fa-solid fa-plus"></i>
+                                    <span>Tambah Pertanyaan Lain</span>
+                                </button>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">3. Informasi Utama yang Ingin Diperoleh dari Narasumber</label>
+                                <textarea v-model="activeStudentData.missions.m2.targetInformation" :disabled="!canEditAndSubmitMission(2)" rows="3" required placeholder="Gambarkan jawaban kunci atau poin penting yang diharapkan didapat dari wawancara ini..."
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- MISSION 03 FIELDS -->
+                        <div v-if="currentMission.id === 3" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">1. Lokasi Pengambilan Gambar (Shooting Location)</label>
+                                <input type="text" v-model="activeStudentData.missions.m3.locations" :disabled="!canEditAndSubmitMission(3)" required placeholder="Contoh: Ruang Perpustakaan, Lapangan Utama, Koridor Kelas 10"
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">2. Shot List Sederhana</label>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                                        <thead>
+                                            <tr class="bg-cinema-900 border-b border-cinema-700">
+                                                <th class="p-3">#</th>
+                                                <th class="p-3">Deskripsi Visual / Gambar</th>
+                                                <th class="p-3">Jenis Shot (CU/MCU/WS/dll)</th>
+                                                <th class="p-3">Aksi</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="(shot, index) in activeStudentData.missions.m3.shotList" :key="index" class="border-b border-cinema-700/50">
+                                                <td class="p-2 font-bold text-brand-400">{{ index + 1 }}</td>
+                                                <td class="p-2">
+                                                    <input type="text" v-model="shot.desc" :disabled="!canEditAndSubmitMission(3)" required placeholder="Deskripsi visual (contoh: Tangan menata buku)"
+                                                           class="w-full bg-cinema-900 border border-cinema-700 rounded-lg p-2 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                                                </td>
+                                                <td class="p-2">
+                                                    <select v-model="shot.type" :disabled="!canEditAndSubmitMission(3)" class="w-full bg-cinema-900 border border-cinema-700 rounded-lg p-2 text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                                                        <option value="Close Up (CU)">Close Up (CU)</option>
+                                                        <option value="Medium Close Up (MCU)">Medium Close Up (MCU)</option>
+                                                        <option value="Medium Shot (MS)">Medium Shot (MS)</option>
+                                                        <option value="Wide Shot (WS)">Wide Shot (WS)</option>
+                                                        <option value="Extreme Wide Shot (EWS)">Extreme Wide Shot (EWS)</option>
+                                                        <option value="Cutaway / B-Roll">Cutaway / B-Roll</option>
+                                                    </select>
+                                                </td>
+                                                <td class="p-2">
+                                                    <button v-if="canEditAndSubmitMission(3)" type="button" @click="removeShot(index)" class="text-red-400 hover:text-red-300 p-1">
+                                                        <i class="fa-solid fa-xmark"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <button v-if="canEditAndSubmitMission(3)" type="button" @click="addShot" class="mt-2 text-xs font-semibold text-brand-400 hover:underline flex items-center space-x-1">
+                                    <i class="fa-solid fa-plus"></i>
+                                    <span>Tambah Baris Shot</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- MISSION 04 FIELDS -->
+                        <div v-if="currentMission.id === 4" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">1. Catatan Komposisi Gambar (Visual Rule of Thirds / Headroom)</label>
+                                <textarea v-model="activeStudentData.missions.m4.compositionNotes" :disabled="!canEditAndSubmitMission(4)" rows="2" required placeholder="Bagaimana kelompok memastikan pencahayaan dan framing gambar tampak rapi?"
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">2. Catatan Audio Wawancara & Kebisingan (Noise)</label>
+                                <textarea v-model="activeStudentData.missions.m4.audioNotes" :disabled="!canEditAndSubmitMission(4)" rows="2" required placeholder="Peralatan mic apa yang dipakai? Bagaimana kondisi keheningan ruangan?"
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">3. Komunikasi & Etika dengan Narasumber</label>
+                                <textarea v-model="activeStudentData.missions.m4.communicationNotes" :disabled="!canEditAndSubmitMission(4)" rows="2" required placeholder="Catatan kenyamanan narasumber dan perizinan shooting..."
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">4. Link Dokumentasi Foto Behind The Scene (BTS) / Drive / Catatan Produksi</label>
+                                <input type="text" v-model="activeStudentData.missions.m4.btsLink" :disabled="!canEditAndSubmitMission(4)" placeholder="Masukkan URL Link Google Drive Foto Produksi / Keterangan Dokumentasi"
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <!-- MISSION 05 FIELDS -->
+                        <div v-if="currentMission.id === 5" class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">1. Tantangan & Hambatan Saat Pra-Produksi dan Produksi</label>
+                                <textarea v-model="activeStudentData.missions.m5.challenges" :disabled="!canEditAndSubmitMission(5)" rows="3" required placeholder="Ceritakan kendala teknis atau lapangan yang dihadapi kelompok saat riset, shooting, maupun wawancara..."
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">2. Apa yang Perlu Diperbaiki & Dipertahankan</label>
+                                <textarea v-model="activeStudentData.missions.m5.improvementsAndMaintains" :disabled="!canEditAndSubmitMission(5)" rows="3" required placeholder="Hal apa yang perlu ditingkatkan untuk karya berikutnya dan kekuatan apa dari kelompok yang harus dipertahankan..."
+                                          class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-300 uppercase mb-2">3. Link Video Final (YouTube / Google Drive)</label>
+                                <input type="url" v-model="activeStudentData.missions.m5.videoUrl" :disabled="!canEditAndSubmitMission(5)" required placeholder="https://youtube.com/watch?v=... atau https://drive.google.com/..."
+                                       class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3.5 text-sm text-white focus:outline-none focus:border-brand-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                        </div>
+
+                        <!-- Submit Buttons / Lock Status Footer -->
+                        <div class="pt-4 border-t border-cinema-700 flex flex-col sm:flex-row items-center justify-between gap-3">
+                            <span class="text-xs text-slate-400">Status Saat Ini: 
+                                <strong :class="getMissionStatusClass(activeStudentData.missions[currentMission.key].status)">
+                                    {{ getMissionStatusLabel(activeStudentData.missions[currentMission.key].status) }}
+                                </strong>
+                            </span>
+                            
+                            <button v-if="canEditAndSubmitMission(currentMission.id)" type="submit" class="w-full sm:w-auto px-6 py-3 bg-brand-500 hover:bg-brand-400 text-cinema-900 font-bold rounded-xl shadow-lg transition flex items-center justify-center space-x-2">
+                                <i class="fa-solid fa-paper-plane"></i>
+                                <span>Simpan & Kirim Misi 0{{ currentMission.id }}</span>
+                            </button>
+
+                            <div v-else-if="getLockReason(currentMission.id)" class="px-4 py-2.5 bg-amber-950/60 border border-amber-700/60 rounded-xl text-amber-300 text-xs flex items-center space-x-2">
+                                <i class="fa-solid fa-lock text-amber-400"></i>
+                                <span>{{ getLockReason(currentMission.id) }}</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- TEACHER DASHBOARD -->
+            <section v-if="currentUser && currentUser.role === 'teacher'" class="space-y-6">
+                
+                <!-- Overview Stats Header -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-cinema-900 border border-cinema-700/80 rounded-2xl p-5 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Kelompok Siswa</p>
+                            <p class="text-2xl font-black text-white">{{ studentsList.length }}</p>
+                        </div>
+                    </div>
+                    <div class="bg-cinema-900 border border-cinema-700/80 rounded-2xl p-5 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Menunggu Review Guru</p>
+                            <p class="text-2xl font-black text-amber-400">{{ getPendingReviewCount() }}</p>
+                        </div>
+                    </div>
+                    <div class="bg-cinema-900 border border-cinema-700/80 rounded-2xl p-5 flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Misi Disetujui</p>
+                            <p class="text-2xl font-black text-emerald-400">{{ getApprovedCount() }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Monitoring Table -->
+                <div class="bg-cinema-900 border border-cinema-700/80 rounded-2xl p-6 shadow-2xl space-y-4">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-cinema-800">
+                        <div>
+                            <h3 class="text-xl font-extrabold text-white">Monitoring Progress Kelompok</h3>
+                            <p class="text-xs text-slate-400">Evaluasi lembar kerja Misi siswa, tentukan status persetujuan, atau minta revisi.</p>
+                        </div>
+                        <input type="text" v-model="searchStudentQuery" placeholder="Cari nama kelompok / kelas..." 
+                               class="bg-cinema-950 border border-cinema-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-brand-400 w-full sm:w-64">
+                    </div>
+
+                    <!-- Students List Grid/Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                            <thead>
+                                <tr class="bg-cinema-950 text-slate-400 uppercase tracking-wider border-b border-cinema-800 text-[10px]">
+                                    <th class="p-3.5">Kelompok & Anggota</th>
+                                    <th class="p-3.5">Kelas</th>
+                                    <th class="p-3.5 text-center">Misi 1</th>
+                                    <th class="p-3.5 text-center">Misi 2</th>
+                                    <th class="p-3.5 text-center">Misi 3</th>
+                                    <th class="p-3.5 text-center">Misi 4</th>
+                                    <th class="p-3.5 text-center">Misi 5</th>
+                                    <th class="p-3.5 text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="std in filteredStudents" :key="std.id" class="border-b border-cinema-800 hover:bg-cinema-800/40 transition">
+                                    <td class="p-3.5 max-w-xs">
+                                        <p class="font-bold text-white text-xs mb-0.5">{{ std.groupName || std.name }}</p>
+                                        <p class="text-[10px] text-slate-400 truncate"><i class="fa-solid fa-users text-slate-500 mr-1"></i>{{ std.members || '-' }}</p>
+                                    </td>
+                                    <td class="p-3.5 font-semibold text-slate-300">
+                                        {{ std.class }}
+                                    </td>
+                                    
+                                    <!-- Status Pill per mission -->
+                                    <td v-for="mKey in ['m1', 'm2', 'm3', 'm4', 'm5']" :key="mKey" class="p-3.5 text-center">
+                                        <button @click="openTeacherReviewModal(std, mKey)" 
+                                                class="px-2.5 py-1 rounded-md text-[10px] font-bold tracking-wider transition hover:scale-105"
+                                                :class="getMissionStatusClass(std.missions[mKey].status)">
+                                            {{ getMissionStatusLabel(std.missions[mKey].status) }}
+                                        </button>
+                                    </td>
+
+                                    <td class="p-3.5 text-right space-x-1 whitespace-nowrap">
+                                        <button @click="openStudentFullDetail(std)" class="px-3 py-1.5 bg-brand-500/20 text-brand-400 hover:bg-brand-500 hover:text-cinema-950 rounded-lg text-xs font-bold transition">
+                                            <i class="fa-solid fa-eye mr-1"></i> Periksa
+                                        </button>
+                                        <button @click="askDeleteStudent(std)" class="px-2.5 py-1.5 bg-red-500/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg text-xs font-bold transition" title="Hapus Kelompok">
+                                            <i class="fa-solid fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr v-if="filteredStudents.length === 0">
+                                    <td colspan="8" class="p-8 text-center text-slate-500">Belum ada data kelompok siswa yang terdaftar. Siswa dapat melakukan login dan mengisi lembar kerja.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TEACHER REVIEW MODAL FOR A SINGLE MISSION -->
+            <div v-if="reviewModal.show" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div class="bg-cinema-800 border border-cinema-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-5">
+                    <div class="flex items-center justify-between border-b border-cinema-700 pb-3">
+                        <div>
+                            <span class="text-xs font-bold text-brand-400 uppercase tracking-widest">{{ reviewModal.student.name }} ({{ reviewModal.student.class }})</span>
+                            <h3 class="text-lg font-bold text-white">Review {{ getMissionTitleByKey(reviewModal.missionKey) }}</h3>
+                        </div>
+                        <button @click="reviewModal.show = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+
+                    <!-- Submission Content Readout in Modal -->
+                    <div class="bg-cinema-900 p-4 rounded-xl border border-cinema-700 space-y-3 text-xs">
+                        <h4 class="font-bold text-slate-300 uppercase tracking-wider text-[11px] border-b border-cinema-800 pb-1">Hasil Isian Siswa:</h4>
+                        
+                        <!-- M1 Content -->
+                        <div v-if="reviewModal.missionKey === 'm1'" class="space-y-2 text-slate-200">
+                            <p><strong>Judul Dokumenter:</strong> {{ reviewModal.student.missions.m1.docTitle || '-' }}</p>
+                            <p><strong>Tema Dokumenter:</strong> {{ reviewModal.student.missions.m1.theme || '-' }}</p>
+                            <p><strong>Fenomena Menarik:</strong> {{ reviewModal.student.missions.m1.phenomenon || '-' }}</p>
+                            <p><strong>Narasumber:</strong> {{ reviewModal.student.missions.m1.interviewee || '-' }}</p>
+                            <p><strong>Alasan Menarik:</strong> {{ reviewModal.student.missions.m1.reason || '-' }}</p>
+                            <p><strong>Ide Utama (Logline):</strong> {{ reviewModal.student.missions.m1.mainIdea || '-' }}</p>
+                        </div>
+
+                        <!-- M2 Content -->
+                        <div v-if="reviewModal.missionKey === 'm2'" class="space-y-2 text-slate-200">
+                            <p><strong>Narasumber:</strong> {{ reviewModal.student.missions.m2.interviewee || '-' }}</p>
+                            <div>
+                                <strong>Pertanyaan Wawancara:</strong>
+                                <ol class="list-decimal pl-4 mt-1 space-y-1">
+                                    <li v-for="(q, idx) in reviewModal.student.missions.m2.questions" :key="idx">{{ q }}</li>
+                                </ol>
+                            </div>
+                            <p><strong>Target Informasi:</strong> {{ reviewModal.student.missions.m2.targetInformation || '-' }}</p>
+                        </div>
+
+                        <!-- M3 Content -->
+                        <div v-if="reviewModal.missionKey === 'm3'" class="space-y-2 text-slate-200">
+                            <p><strong>Lokasi Shooting:</strong> {{ reviewModal.student.missions.m3.locations || '-' }}</p>
+                            <p><strong>Shot List:</strong></p>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li v-for="(shot, idx) in reviewModal.student.missions.m3.shotList" :key="idx">
+                                    {{ shot.type }}: {{ shot.desc }}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- M4 Content -->
+                        <div v-if="reviewModal.missionKey === 'm4'" class="space-y-2 text-slate-200">
+                            <p><strong>Komposisi Gambar:</strong> {{ reviewModal.student.missions.m4.compositionNotes || '-' }}</p>
+                            <p><strong>Teknik Audio:</strong> {{ reviewModal.student.missions.m4.audioNotes || '-' }}</p>
+                            <p><strong>Etika/Komunikasi:</strong> {{ reviewModal.student.missions.m4.communicationNotes || '-' }}</p>
+                            <p><strong>Link BTS:</strong> <a :href="reviewModal.student.missions.m4.btsLink" target="_blank" class="text-brand-400 underline">{{ reviewModal.student.missions.m4.btsLink || '-' }}</a></p>
+                        </div>
+
+                        <!-- M5 Content -->
+                        <div v-if="reviewModal.missionKey === 'm5'" class="space-y-2 text-slate-200">
+                            <p><strong>Tantangan & Hambatan:</strong> {{ reviewModal.student.missions.m5.challenges || '-' }}</p>
+                            <p><strong>Perbaikan & Pertahankan:</strong> {{ reviewModal.student.missions.m5.improvementsAndMaintains || '-' }}</p>
+                            <p><strong>Link Video Final:</strong> <a :href="reviewModal.student.missions.m5.videoUrl" target="_blank" class="text-brand-400 underline">{{ reviewModal.student.missions.m5.videoUrl || '-' }}</a></p>
+                        </div>
+                    </div>
+
+                    <!-- Teacher Evaluation Form -->
+                    <div class="space-y-4 pt-2">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Berikan Catatan Evaluasi / Revisi Guru</label>
+                            <textarea v-model="reviewModal.feedback" rows="3" placeholder="Tuliskan catatan perbaikan atau saran apresiasi..."
+                                      class="w-full bg-cinema-900 border border-cinema-600 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-brand-400"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-300 uppercase mb-1">Nilai Misi (0-100)</label>
+                            <input type="number" min="0" max="100" v-model="reviewModal.grade" placeholder="Contoh: 85"
+                                   class="w-32 bg-cinema-900 border border-cinema-600 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-brand-400">
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-end space-x-3 pt-3 border-t border-cinema-700">
+                        <button @click="submitTeacherReview('revision')" class="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white font-semibold text-xs rounded-xl transition">
+                            <i class="fa-solid fa-rotate-left mr-1"></i> Minta Revisi
+                        </button>
+                        <button @click="submitTeacherReview('approved')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-lg">
+                            <i class="fa-solid fa-circle-check mr-1"></i> Setujui Misi Ini
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DELETE CONFIRMATION MODAL FOR TEACHER -->
+            <div v-if="deleteModal.show" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div class="bg-cinema-800 border border-cinema-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+                    <div class="flex items-center space-x-3 text-red-400">
+                        <div class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-base font-bold text-white">Hapus Data Kelompok?</h3>
+                            <p class="text-xs text-slate-400">Tindakan ini tidak dapat dibatalkan.</p>
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-cinema-900 rounded-xl border border-cinema-700 text-xs text-slate-300 space-y-1">
+                        <p><strong>Kelompok:</strong> {{ deleteModal.student?.groupName }}</p>
+                        <p><strong>Kelas:</strong> {{ deleteModal.student?.class }}</p>
+                        <p><strong>Anggota:</strong> {{ deleteModal.student?.members }}</p>
+                    </div>
+
+                    <p class="text-xs text-slate-400">
+                        Seluruh isian Misi 01 s/d Misi 05 dan catatan evaluasi kelompok ini akan terhapus secara permanen dari sistem.
+                    </p>
+
+                    <div class="flex items-center justify-end space-x-2 pt-2 border-t border-cinema-700">
+                        <button @click="deleteModal.show = false" class="px-4 py-2 bg-cinema-700 hover:bg-cinema-600 text-slate-200 text-xs font-semibold rounded-xl transition">
+                            Batal
+                        </button>
+                        <button @click="confirmDeleteStudent" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl transition shadow-lg flex items-center space-x-1.5">
+                            <i class="fa-solid fa-trash"></i>
+                            <span>Hapus Permanen</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LOGIN ERROR POPUP MODAL FOR TEACHER -->
+            <div v-if="errorModal.show" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div class="bg-cinema-800 border border-red-500/50 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center transform transition-all animate-bounce-short">
+                    <div class="w-14 h-14 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 text-2xl mx-auto shadow-lg shadow-red-500/10">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-black text-white tracking-wide">{{ errorModal.title }}</h3>
+                        <p class="text-xs text-slate-300 mt-2 leading-relaxed">{{ errorModal.message }}</p>
+                    </div>
+                    <button @click="errorModal.show = false" class="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center justify-center space-x-2 uppercase tracking-wider">
+                        <i class="fa-solid fa-rotate-right"></i>
+                        <span>Coba Lagi</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- HIDDEN PDF PRINT TEMPLATE (CONTAINS MISSION 01 UNTIL MISSION 03 ONLY) -->
+            <div id="pdf-printable" class="hidden print-only p-8 bg-white text-black font-sans">
+                <!-- PDF Header Banner -->
+                <div class="border-b-2 border-black pb-4 mb-6">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h1 class="text-2xl font-black uppercase tracking-wider text-black">DOCCU MISSION — PORTFOLIO FILM DOKUMENTER</h1>
+                            <p class="text-xs font-bold text-gray-600 uppercase tracking-widest mt-0.5">Lembar Kerja Kelompok & Laporan Misi Produksi (Misi 01 - 03)</p>
+                        </div>
+                        <div class="text-right text-[10px] text-gray-500 font-bold uppercase">
+                            <p>Tanggal Export: {{ new Date().toLocaleDateString('id-ID') }}</p>
+                            <p>Status: Verified Portfolio</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3 mt-4 p-3 bg-gray-100 rounded-lg border border-gray-300 text-xs font-medium">
+                        <div>
+                            <p>Nama Kelompok: <strong class="text-black">{{ activeStudentData.groupName }}</strong></p>
+                            <p class="mt-1">Anggota Kelompok: <strong class="text-black">{{ activeStudentData.members }}</strong></p>
+                            <p class="mt-1">Kelas: <strong class="text-black">{{ activeStudentData.class }}</strong></p>
+                        </div>
+                        <div class="border-l border-gray-300 pl-3">
+                            <p>Judul Dokumenter: <strong class="text-black">{{ activeStudentData.missions.m1.docTitle || '-' }}</strong></p>
+                            <p class="mt-1">Tema Dokumenter: <strong class="text-black">{{ activeStudentData.missions.m1.theme || '-' }}</strong></p>
+                            <p class="mt-1">Guru Pembimbing: <strong class="text-black">Bapak SYIFA</strong></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mission 01 Render -->
+                <div class="mb-5">
+                    <h2 class="text-xs font-bold bg-gray-900 text-white p-2 mb-2 uppercase tracking-wider">MISSION 01 – FIND THE STORY (Ide & Fenomena)</h2>
+                    <div class="text-xs space-y-1.5 pl-2">
+                        <p><strong>Judul Dokumenter:</strong> {{ activeStudentData.missions.m1.docTitle || '-' }}</p>
+                        <p><strong>Tema Dokumenter:</strong> {{ activeStudentData.missions.m1.theme || '-' }}</p>
+                        <p><strong>Fenomena Menarik:</strong> {{ activeStudentData.missions.m1.phenomenon || '-' }}</p>
+                        <p><strong>Calon Narasumber:</strong> {{ activeStudentData.missions.m1.interviewee || '-' }}</p>
+                        <p><strong>Alasan Menarik:</strong> {{ activeStudentData.missions.m1.reason || '-' }}</p>
+                        <p><strong>Ide Utama (Logline):</strong> {{ activeStudentData.missions.m1.mainIdea || '-' }}</p>
+                        <div v-if="activeStudentData.missions.m1.feedback" class="italic text-gray-800 bg-amber-50 p-2 border border-amber-300 rounded mt-1">
+                            Catatan Bapak SYIFA: "{{ activeStudentData.missions.m1.feedback }}" (Nilai: {{ activeStudentData.missions.m1.grade }}/100)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mission 02 Render -->
+                <div class="mb-5">
+                    <h2 class="text-xs font-bold bg-gray-900 text-white p-2 mb-2 uppercase tracking-wider">MISSION 02 – ASK THE STORY (Perancangan Wawancara)</h2>
+                    <div class="text-xs space-y-1.5 pl-2">
+                        <p><strong>Narasumber Terpilih:</strong> {{ activeStudentData.missions.m2.interviewee || '-' }}</p>
+                        <p><strong>Daftar Pertanyaan Wawancara:</strong></p>
+                        <ol class="list-decimal pl-5 space-y-0.5">
+                            <li v-for="(q, i) in activeStudentData.missions.m2.questions" :key="i">{{ q }}</li>
+                        </ol>
+                        <p><strong>Target Informasi Kunci:</strong> {{ activeStudentData.missions.m2.targetInformation || '-' }}</p>
+                        <div v-if="activeStudentData.missions.m2.feedback" class="italic text-gray-800 bg-amber-50 p-2 border border-amber-300 rounded mt-1">
+                            Catatan Bapak SYIFA: "{{ activeStudentData.missions.m2.feedback }}" (Nilai: {{ activeStudentData.missions.m2.grade }}/100)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mission 03 Render -->
+                <div class="mb-5">
+                    <h2 class="text-xs font-bold bg-gray-900 text-white p-2 mb-2 uppercase tracking-wider">MISSION 03 – VISUALIZE THE STORY (Shot List & Visual)</h2>
+                    <div class="text-xs space-y-1.5 pl-2">
+                        <p><strong>Lokasi Pengambilan Gambar:</strong> {{ activeStudentData.missions.m3.locations || '-' }}</p>
+                        <p><strong>Shot List Sederhana:</strong></p>
+                        <table class="w-full border-collapse border border-gray-400 mt-1">
+                            <thead>
+                                <tr class="bg-gray-200">
+                                    <th class="border border-gray-400 p-1 text-left w-8">No</th>
+                                    <th class="border border-gray-400 p-1 text-left">Deskripsi Visual / Visual Shot</th>
+                                    <th class="border border-gray-400 p-1 text-left">Jenis Shot</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(shot, idx) in activeStudentData.missions.m3.shotList" :key="idx">
+                                    <td class="border border-gray-400 p-1">{{ idx + 1 }}</td>
+                                    <td class="border border-gray-400 p-1">{{ shot.desc }}</td>
+                                    <td class="border border-gray-400 p-1">{{ shot.type }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-if="activeStudentData.missions.m3.feedback" class="italic text-gray-800 bg-amber-50 p-2 border border-amber-300 rounded mt-1">
+                            Catatan Bapak SYIFA: "{{ activeStudentData.missions.m3.feedback }}" (Nilai: {{ activeStudentData.missions.m3.grade }}/100)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signature Block in PDF Printable Template -->
+                <div class="mt-10 flex justify-between items-center text-xs pt-4 border-t border-gray-400">
+                    <div class="text-center w-1/3">
+                        <p class="mb-14 font-medium">Perwakilan Kelompok Siswa,</p>
+                        <p class="font-bold border-b border-black inline-block px-4 pb-0.5">{{ activeStudentData.groupName }}</p>
+                    </div>
+                    <div class="text-center w-1/3">
+                        <p class="mb-14 font-medium">Guru Pembimbing Dokumenter,</p>
+                        <p class="font-bold border-b border-black inline-block px-4 pb-0.5">Bapak SYIFA</p>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="bg-cinema-900 border-t border-cinema-800 py-4 text-center text-xs text-slate-500 no-print">
+            <p>&copy; 2026 DOCCU MISSION — Interactive Film Learning Environment</p>
+        </footer>
+    </div>
+
+    <script>
+        // Helper function for creating new student mission objects
+        function createStudentObj(groupName, members, studentClass) {
+            return {
+                id: 'std_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                name: groupName,
+                groupName: groupName,
+                members: members,
+                class: studentClass,
+                missions: {
+                    m1: { docTitle: '', theme: '', phenomenon: '', interviewee: '', reason: '', mainIdea: '', status: 'draft', feedback: '', grade: '' },
+                    m2: { interviewee: '', questions: ['', '', '', '', ''], targetInformation: '', status: 'draft', feedback: '', grade: '' },
+                    m3: { locations: '', shotList: [{ desc: '', type: 'Medium Shot (MS)' }], status: 'draft', feedback: '', grade: '' },
+                    m4: { compositionNotes: '', audioNotes: '', communicationNotes: '', btsLink: '', status: 'draft', feedback: '', grade: '' },
+                    m5: { challenges: '', improvementsAndMaintains: '', videoUrl: '', status: 'draft', feedback: '', grade: '' }
+                }
+            };
+        }
+
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    currentUser: null, // { name, groupName, members, role: 'student'|'teacher', class }
+                    studentLoginForm: { groupName: '', members: '', class: '' },
+                    teacherLoginForm: { username: '', password: '' },
+                    searchStudentQuery: '',
+                    
+                    // Toast system
+                    toast: { show: false, message: '', type: 'success' },
+
+                    // Active Mission Navigation
+                    activeMissionTab: 1,
+
+                    // Static Mission Descriptions
+                    missions: [
+                        {
+                            id: 1,
+                            key: 'm1',
+                            title: 'FIND THE STORY',
+                            fullTitle: 'MISI 01 – FIND THE STORY (Judul, Tema, Ide & Fenomena)',
+                            icon: 'fa-solid fa-compass',
+                            tasks: [
+                                'Tentukan Judul dan Tema Dokumenter yang diambil.',
+                                'Temukan satu fenomena menarik (bebas di lingkungan sekolah/masyarakat).',
+                                'Tentukan siapa yang dapat menjadi narasumber.',
+                                'Jelaskan mengapa fenomena tersebut menarik untuk dijadikan dokumenter.',
+                                'Buat satu kalimat ide utama (logline) dokumenter.'
+                            ]
+                        },
+                        {
+                            id: 2,
+                            key: 'm2',
+                            title: 'ASK THE STORY',
+                            fullTitle: 'MISI 02 – ASK THE STORY (Perancangan Wawancara)',
+                            icon: 'fa-solid fa-comments',
+                            tasks: [
+                                'Tentukan narasumber terpilih.',
+                                'Susun minimal 5 pertanyaan wawancara.',
+                                'Pastikan pertanyaan tidak hanya menghasilkan jawaban "ya/tidak".',
+                                'Tentukan informasi apa yang ingin diperoleh dari narasumber.'
+                            ]
+                        },
+                        {
+                            id: 3,
+                            key: 'm3',
+                            title: 'VISUALIZE THE STORY',
+                            fullTitle: 'MISI 03 – VISUALIZE THE STORY (Visual & Shot List)',
+                            icon: 'fa-solid fa-camera-retro',
+                            tasks: [
+                                'Tentukan gambar apa saja yang diperlukan (B-Roll / Visual).',
+                                'Tentukan lokasi pengambilan gambar.',
+                                'Buat shot list sederhana.',
+                                'Tentukan jenis shot yang digunakan (CU, MCU, WS, dll).'
+                            ]
+                        },
+                        {
+                            id: 4,
+                            key: 'm4',
+                            title: 'DOCUMENT THE STORY',
+                            fullTitle: 'MISI 04 – DOCUMENT THE STORY (Proses Produksi)',
+                            icon: 'fa-solid fa-video',
+                            tasks: [
+                                'Lakukan pengambilan gambar/wawancara di lapangan.',
+                                'Perhatikan komposisi gambar (rule of thirds, lighting).',
+                                'Perhatikan kualitas audio dan keheningan.',
+                                'Perhatikan komunikasi & etika dengan narasumber.',
+                                'Dokumentasikan proses produksi (BTS).'
+                            ]
+                        },
+                        {
+                            id: 5,
+                            key: 'm5',
+                            title: 'SHOW THE STORY',
+                            fullTitle: 'MISI 05 – SHOW THE STORY (Evaluasi Karya & Video Final)',
+                            icon: 'fa-solid fa-film',
+                            tasks: [
+                                'Jelaskan tantangan & hambatan saat pra-produksi dan produksi.',
+                                'Tuliskan hal yang perlu diperbaiki dan dipertahankan oleh kelompok.',
+                                'Sertakan link YouTube / Drive untuk video dokumenter final.'
+                            ]
+                        }
+                    ],
+
+                    // Single Active Student Template for initial state
+                    activeStudentData: createStudentObj('Kelompok 1 Studio', 'Andi, Budi, Siti', 'X DKV 1'),
+
+                    // All Student Records saved in LocalStorage
+                    studentsList: [],
+
+                    // Review Modal State
+                    reviewModal: {
+                        show: false,
+                        student: null,
+                        missionKey: 'm1',
+                        feedback: '',
+                        grade: 80
+                    },
+
+                    // Delete Group Modal State
+                    deleteModal: {
+                        show: false,
+                        student: null
+                    },
+
+                    // Teacher Login Error Modal State
+                    errorModal: {
+                        show: false,
+                        title: 'Akses Login Guru Gagal',
+                        message: ''
+                    }
+                }
+            },
+
+            computed: {
+                currentMission() {
+                    return this.missions.find(m => m.id === this.activeMissionTab) || this.missions[0];
+                },
+                canDownloadPDF() {
+                    if (!this.activeStudentData || !this.activeStudentData.missions) return false;
+                    // Unlocked ONLY when reaching Mission 03 (meaning Mission 01 and 02 are APPROVED by Pak SYIFA)
+                    const m1Status = this.activeStudentData.missions.m1?.status;
+                    const m2Status = this.activeStudentData.missions.m2?.status;
+                    return m1Status === 'approved' && m2Status === 'approved';
+                },
+                filteredStudents() {
+                    if (!this.searchStudentQuery) return this.studentsList;
+                    const q = this.searchStudentQuery.toLowerCase();
+                    return this.studentsList.filter(s => 
+                        (s.groupName && s.groupName.toLowerCase().includes(q)) || 
+                        (s.name && s.name.toLowerCase().includes(q)) || 
+                        (s.members && s.members.toLowerCase().includes(q)) || 
+                        (s.class && s.class.toLowerCase().includes(q))
+                    );
+                }
+            },
+
+            watch: {
+                activeStudentData: {
+                    handler(newVal) {
+                        if (newVal && this.currentUser && this.currentUser.role === 'student') {
+                            localStorage.setItem('doccu_active_draft_' + newVal.id, JSON.stringify(newVal));
+                            this.saveSession();
+                        }
+                    },
+                    deep: true
+                },
+                activeMissionTab() {
+                    this.saveSession();
+                }
+            },
+
+            mounted() {
+                this.restoreSession();
+                if (window.doccuDb) {
+                    this.initFirebase();
+                } else {
+                    window.addEventListener('firebase-ready', () => {
+                        this.initFirebase();
+                    });
+                }
+                this.loadLocalStorage();
+            },
+
+            methods: {
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    this.toast.show = true;
+                    setTimeout(() => { this.toast.show = false; }, 3000);
+                },
+
+                async initFirebase() {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await window.doccuFS.signInWithCustomToken(window.doccuAuth, __initial_auth_token);
+                        } else {
+                            await window.doccuFS.signInAnonymously(window.doccuAuth);
+                        }
+                    } catch(e) {
+                        console.warn("Auth token fallback to anonymous:", e);
+                        try {
+                            await window.doccuFS.signInAnonymously(window.doccuAuth);
+                        } catch(err) {
+                            console.error("Anonymous auth failed:", err);
+                        }
+                    }
+
+                    // Subscribe to real-time multi-device cloud updates
+                    const colRef = window.doccuFS.collection(window.doccuDb, 'artifacts', window.doccuAppId, 'public', 'data', 'students');
+                    window.doccuFS.onSnapshot(colRef, (snapshot) => {
+                        const remoteList = [];
+                        snapshot.forEach((docSnap) => {
+                            remoteList.push({ ...docSnap.data(), id: docSnap.id });
+                        });
+
+                        if (remoteList.length > 0) {
+                            this.studentsList = remoteList;
+                            this.saveLocalStorage();
+                            
+                            // Sync current active student data if logged in
+                            if (this.currentUser && this.currentUser.role === 'student' && this.activeStudentData) {
+                                const updated = remoteList.find(s => s.id === this.activeStudentData.id || (s.groupName && s.groupName.toLowerCase() === this.currentUser.groupName.toLowerCase()));
+                                if (updated) {
+                                    const localDraft = localStorage.getItem('doccu_active_draft_' + updated.id);
+                                    if (!localDraft) {
+                                        this.activeStudentData = JSON.parse(JSON.stringify(updated));
+                                    } else {
+                                        // Preserve unsubmitted local typing draft while merging teacher reviews/statuses
+                                        const draftObj = JSON.parse(localDraft);
+                                        Object.keys(updated.missions).forEach(mKey => {
+                                            draftObj.missions[mKey].status = updated.missions[mKey].status;
+                                            draftObj.missions[mKey].feedback = updated.missions[mKey].feedback;
+                                            draftObj.missions[mKey].grade = updated.missions[mKey].grade;
+                                        });
+                                        this.activeStudentData = draftObj;
+                                    }
+                                }
+                            }
+                        }
+                    }, (err) => {
+                        console.error("Firestore onSnapshot error:", err);
+                    });
+                },
+
+                async syncStudentToFirestore(studentObj) {
+                    if (!window.doccuDb) return;
+                    try {
+                        const docRef = window.doccuFS.doc(window.doccuDb, 'artifacts', window.doccuAppId, 'public', 'data', 'students', studentObj.id);
+                        await window.doccuFS.setDoc(docRef, studentObj, { merge: true });
+                    } catch (e) {
+                        console.error("Firestore write error:", e);
+                    }
+                },
+
+                async removeStudentFromFirestore(studentId) {
+                    if (!window.doccuDb) return;
+                    try {
+                        const docRef = window.doccuFS.doc(window.doccuDb, 'artifacts', window.doccuAppId, 'public', 'data', 'students', studentId);
+                        await window.doccuFS.deleteDoc(docRef);
+                    } catch (e) {
+                        console.error("Firestore delete error:", e);
+                    }
+                },
+
+                saveSession() {
+                    if (this.currentUser) {
+                        const session = {
+                            currentUser: this.currentUser,
+                            activeStudentId: this.activeStudentData ? this.activeStudentData.id : null,
+                            activeMissionTab: this.activeMissionTab
+                        };
+                        localStorage.setItem('doccu_session', JSON.stringify(session));
+                    } else {
+                        localStorage.removeItem('doccu_session');
+                    }
+                },
+
+                restoreSession() {
+                    try {
+                        const savedSession = localStorage.getItem('doccu_session');
+                        if (savedSession) {
+                            const session = JSON.parse(savedSession);
+                            if (session.currentUser) {
+                                this.currentUser = session.currentUser;
+                                this.activeMissionTab = session.activeMissionTab || 1;
+                                
+                                if (session.activeStudentId) {
+                                    const draft = localStorage.getItem('doccu_active_draft_' + session.activeStudentId);
+                                    if (draft) {
+                                        this.activeStudentData = JSON.parse(draft);
+                                    }
+                                }
+                            }
+                        }
+                    } catch(e) {
+                        console.error("Error restoring session", e);
+                    }
+                },
+
+                createNewStudentObj(groupName, members, studentClass) {
+                    return createStudentObj(groupName, members, studentClass);
+                },
+
+                loginStudent() {
+                    if (!this.studentLoginForm.groupName.trim() || !this.studentLoginForm.members.trim() || !this.studentLoginForm.class.trim()) return;
+                    
+                    const groupName = this.studentLoginForm.groupName.trim();
+                    const members = this.studentLoginForm.members.trim();
+                    const sClass = this.studentLoginForm.class.trim();
+
+                    // Check if already exists in list
+                    let existing = this.studentsList.find(s => (s.groupName || s.name).toLowerCase() === groupName.toLowerCase());
+                    if (!existing) {
+                        existing = createStudentObj(groupName, members, sClass);
+                        this.studentsList.push(existing);
+                    } else {
+                        existing.members = members;
+                        existing.class = sClass;
+                    }
+
+                    this.activeStudentData = existing;
+                    this.currentUser = { name: existing.groupName, groupName: existing.groupName, members: existing.members, class: existing.class, role: 'student' };
+                    
+                    this.saveSession();
+                    this.syncStudentToFirestore(existing);
+                    this.saveLocalStorage();
+                    this.showToast('Selamat Datang, ' + existing.groupName);
+                },
+
+                loginTeacher() {
+                    const user = this.teacherLoginForm.username.trim();
+                    const pass = this.teacherLoginForm.password.trim();
+
+                    if (user.toLowerCase() === 'syifa' && pass === '161101') {
+                        this.currentUser = { name: 'Bapak SYIFA', class: 'Guru Pembimbing', role: 'teacher' };
+                        this.saveSession();
+                        this.showToast('Berhasil masuk sebagai Guru Pembimbing.');
+                        this.teacherLoginForm.username = '';
+                        this.teacherLoginForm.password = '';
+                    } else {
+                        this.errorModal.title = 'Login Guru Gagal!';
+                        this.errorModal.message = 'Username atau Password yang Anda masukkan salah. Pastikan Username "Syifa" dan Password "161101".';
+                        this.errorModal.show = true;
+                    }
+                },
+
+                logout() {
+                    this.currentUser = null;
+                    localStorage.removeItem('doccu_session');
+                    this.showToast('Anda telah keluar.');
+                },
+
+                goHome() {
+                    if (this.currentUser?.role === 'student') {
+                        this.activeMissionTab = 1;
+                    }
+                },
+
+                canEditAndSubmitMission(missionId) {
+                    if (!this.activeStudentData || !this.activeStudentData.missions) return false;
+                    
+                    // Prior missions must be approved before unlocking subsequent missions
+                    for (let i = 1; i < missionId; i++) {
+                        const prevKey = 'm' + i;
+                        if (this.activeStudentData.missions[prevKey]?.status !== 'approved') {
+                            return false;
+                        }
+                    }
+
+                    // Check current mission status: editable only when draft or needs revision
+                    const currentKey = 'm' + missionId;
+                    const currentStatus = this.activeStudentData.missions[currentKey]?.status || 'draft';
+                    
+                    return currentStatus === 'draft' || currentStatus === 'revision';
+                },
+
+                getLockReason(missionId) {
+                    if (!this.activeStudentData || !this.activeStudentData.missions) return '';
+
+                    // Check if prior missions are unapproved
+                    for (let i = 1; i < missionId; i++) {
+                        const prevKey = 'm' + i;
+                        if (this.activeStudentData.missions[prevKey]?.status !== 'approved') {
+                            return `Misi 0${i} belum disetujui oleh Bapak SYIFA. Selesaikan dan dapatkan persetujuan Misi 0${i} terlebih dahulu.`;
+                        }
+                    }
+
+                    // Check status of current mission
+                    const currentKey = 'm' + missionId;
+                    const currentStatus = this.activeStudentData.missions[currentKey]?.status || 'draft';
+
+                    if (currentStatus === 'submitted') {
+                        return `Misi 0${missionId} telah dikirim dan sedang dalam proses peninjauan oleh Bapak SYIFA.`;
+                    }
+                    if (currentStatus === 'approved') {
+                        return `Misi 0${missionId} telah disetujui oleh Bapak SYIFA.`;
+                    }
+
+                    return '';
+                },
+
+                // Mission 02 Question Helpers
+                addQuestion() {
+                    this.activeStudentData.missions.m2.questions.push('');
+                },
+                removeQuestion(index) {
+                    this.activeStudentData.missions.m2.questions.splice(index, 1);
+                },
+
+                // Mission 03 Shot Helpers
+                addShot() {
+                    this.activeStudentData.missions.m3.shotList.push({ desc: '', type: 'Medium Shot (MS)' });
+                },
+                removeShot(index) {
+                    this.activeStudentData.missions.m3.shotList.splice(index, 1);
+                },
+
+                saveMissionData() {
+                    const currentKey = this.currentMission.key;
+                    // Mark as submitted
+                    this.activeStudentData.missions[currentKey].status = 'submitted';
+                    
+                    // Save into list
+                    const idx = this.studentsList.findIndex(s => s.id === this.activeStudentData.id);
+                    if (idx !== -1) {
+                        this.studentsList[idx] = this.activeStudentData;
+                    } else {
+                        this.studentsList.push(this.activeStudentData);
+                    }
+                    
+                    localStorage.removeItem('doccu_active_draft_' + this.activeStudentData.id);
+
+                    this.syncStudentToFirestore(this.activeStudentData);
+                    this.saveLocalStorage();
+                    this.saveSession();
+                    this.showToast('Misi 0' + this.currentMission.id + ' berhasil disimpan dan dikirim ke Bapak SYIFA!');
+                },
+
+                // Status Helpers
+                getMissionStatusLabel(status) {
+                    switch (status) {
+                        case 'submitted': return 'Menunggu Review Guru';
+                        case 'approved': return 'Disetujui / Selesai';
+                        case 'revision': return 'Perlu Revisi';
+                        default: return 'Belum Dikirim';
+                    }
+                },
+
+                getMissionStatusClass(status) {
+                    switch (status) {
+                        case 'submitted': return 'bg-amber-500/20 text-amber-300 border border-amber-500/40';
+                        case 'approved': return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+                        case 'revision': return 'bg-red-500/20 text-red-300 border border-red-500/40';
+                        default: return 'bg-slate-800 text-slate-400 border border-slate-700';
+                    }
+                },
+
+                getCompletedCount(studentObj) {
+                    if (!studentObj || !studentObj.missions) return 0;
+                    return Object.values(studentObj.missions).filter(m => m.status === 'approved' || m.status === 'submitted').length;
+                },
+
+                getPendingReviewCount() {
+                    let count = 0;
+                    this.studentsList.forEach(s => {
+                        Object.values(s.missions).forEach(m => {
+                            if (m.status === 'submitted') count++;
+                        });
+                    });
+                    return count;
+                },
+
+                getApprovedCount() {
+                    let count = 0;
+                    this.studentsList.forEach(s => {
+                        Object.values(s.missions).forEach(m => {
+                            if (m.status === 'approved') count++;
+                        });
+                    });
+                    return count;
+                },
+
+                // Teacher Review Methods
+                openTeacherReviewModal(student, missionKey) {
+                    this.reviewModal.student = student;
+                    this.reviewModal.missionKey = missionKey;
+                    this.reviewModal.feedback = student.missions[missionKey].feedback || '';
+                    this.reviewModal.grade = student.missions[missionKey].grade || 85;
+                    this.reviewModal.show = true;
+                },
+
+                openStudentFullDetail(student) {
+                    this.openTeacherReviewModal(student, 'm1');
+                },
+
+                getMissionTitleByKey(key) {
+                    const map = { m1: 'Misi 01', m2: 'Misi 02', m3: 'Misi 03', m4: 'Misi 04', m5: 'Misi 05' };
+                    return map[key] || 'Misi';
+                },
+
+                submitTeacherReview(newStatus) {
+                    const std = this.reviewModal.student;
+                    const mKey = this.reviewModal.missionKey;
+                    
+                    std.missions[mKey].status = newStatus;
+                    std.missions[mKey].feedback = this.reviewModal.feedback;
+                    std.missions[mKey].grade = this.reviewModal.grade;
+
+                    this.syncStudentToFirestore(std);
+                    this.saveLocalStorage();
+                    this.reviewModal.show = false;
+                    this.showToast(`Misi telah diperbarui (${newStatus === 'approved' ? 'Disetujui' : 'Diminta Revisi'})`);
+                },
+
+                // Delete Student Group Methods
+                askDeleteStudent(student) {
+                    this.deleteModal.student = student;
+                    this.deleteModal.show = true;
+                },
+
+                confirmDeleteStudent() {
+                    if (!this.deleteModal.student) return;
+                    const studentId = this.deleteModal.student.id;
+                    const deletedName = this.deleteModal.student.groupName;
+
+                    this.studentsList = this.studentsList.filter(s => s.id !== studentId);
+                    this.removeStudentFromFirestore(studentId);
+                    this.saveLocalStorage();
+
+                    this.deleteModal.show = false;
+                    this.deleteModal.student = null;
+                    this.showToast(`Data kelompok "${deletedName}" berhasil dihapus.`);
+                },
+
+                // Download PDF (Includes Mission 01, 02, and 03 only)
+                downloadPDF() {
+                    this.showToast('Menyiapkan dokumen PDF Portfolio (Misi 01-03)...');
+                    const element = document.getElementById('pdf-printable');
+                    element.classList.remove('hidden');
+
+                    const opt = {
+                        margin:       [0.5, 0.5, 0.5, 0.5],
+                        filename:     `DOCCU_MISSION_${this.activeStudentData.groupName.replace(/\s+/g, '_')}_MISI_1-3.pdf`,
+                        image:        { type: 'jpeg', quality: 0.98 },
+                        html2canvas:  { scale: 2, logging: false },
+                        jsPDF:        { unit: 'in', format: 'a4', orientation: 'portrait' }
+                    };
+
+                    html2pdf().set(opt).from(element).save().then(() => {
+                        element.classList.add('hidden');
+                        this.showToast('Dokumen PDF Portfolio (Misi 01-03) berhasil diunduh!');
+                    }).catch(err => {
+                        element.classList.add('hidden');
+                        this.showToast('Gagal mengunduh PDF, gunakan menu Cetak Browser.', 'error');
+                    });
+                },
+
+                // LocalStorage Management
+                saveLocalStorage() {
+                    try {
+                        localStorage.setItem('doccu_mission_students', JSON.stringify(this.studentsList));
+                    } catch (e) {
+                        console.error('LocalStorage write error', e);
+                    }
+                },
+
+                loadLocalStorage() {
+                    try {
+                        const saved = localStorage.getItem('doccu_mission_students');
+                        if (saved) {
+                            this.studentsList = JSON.parse(saved);
+                        } else {
+                            // Populate mock data for demo
+                            const mock = createStudentObj('Kelompok LensCraft Studio', 'Ahmad, Rizky, Maya, Siti', 'X DKV 1');
+                            mock.missions.m1.docTitle = 'Jejak Tradisi Batik Tulis';
+                            mock.missions.m1.theme = 'Kebudayaan & Pengrajin Tradisional';
+                            mock.missions.m1.phenomenon = 'Mulai langkanya pengrajin batik tulis pewarna alami di era serba cetak cepat.';
+                            mock.missions.m1.interviewee = 'Mbah Joyo (Pengrajin Batik)';
+                            mock.missions.m1.reason = 'Nilai budaya tinggi dan edukasi generasi muda.';
+                            mock.missions.m1.mainIdea = 'Perjuangan Mbah Joyo merawat keaslian batik tulis tradisional.';
+                            mock.missions.m1.status = 'approved';
+                            mock.missions.m1.grade = 90;
+                            mock.missions.m1.feedback = 'Ide dan tema sangat menarik! Lanjutkan ke Misi 02.';
+
+                            this.studentsList = [mock];
+                            this.saveLocalStorage();
+                        }
+                    } catch (e) {
+                        console.error('LocalStorage read error', e);
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
